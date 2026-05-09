@@ -181,6 +181,8 @@ end
 
 **Note:** OpenAI's Responses API uses `data:` fields with JSON payloads. The response format includes a `type` field to identify event types (`response.output_text.delta` for streaming text chunks, `response.completed` when the stream finishes). The `parser` extracts the delta content from each chunk as it arrives, allowing you to display the response in real-time.
 
+**Important:** Callbacks must be registered **before** the HTTP request starts. This ensures the stream knows what to do with incoming data as soon as chunks arrive.
+
 ### Callback System
 
 Conduit provides callbacks at every stage of processing:
