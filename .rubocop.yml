@@ -30,3 +30,6 @@ Layout/LineLength:
 
 Style/SymbolProc:
   Enabled: false
+
+Naming/FileName:
+  Enabled: false
