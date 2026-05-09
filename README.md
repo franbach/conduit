@@ -32,13 +32,13 @@ Perfect for streaming AI responses, real-time analytics, live updates, and any a
 Install the gem and add to your application's Gemfile:
 
 ```bash
-bundle add conduit
+bundle add conduit-sse
 ```
 
 If bundler is not being used, install the gem directly:
 
 ```bash
-gem install conduit
+gem install conduit-sse
 ```
 
 ## Usage

@@ -3,7 +3,7 @@
 require_relative "lib/conduit/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "conduit"
+  spec.name = "conduit-sse"
   spec.version = Conduit::VERSION
   spec.authors = ["franbach"]
   spec.email = ["franciscobach@gmail.com"]
