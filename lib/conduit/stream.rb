@@ -5,6 +5,7 @@ require_relative "defaults"
 require_relative "event"
 
 module Conduit
+  # Core streaming parser for Server-Sent Events (SSE).
   class Stream
     # Initialize a new Stream with optional customizations.
     #

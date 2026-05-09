@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "test_helper"
 
 class ConduitStreamFuzzTest < Minitest::Test
@@ -5,7 +7,7 @@ class ConduitStreamFuzzTest < Minitest::Test
 
   def test_random_chunk_splitting_produces_correct_events
     ITERATIONS.times do
-      input = build_input_frames(["a", "b", "c", "d"])
+      input = build_input_frames(%w[a b c d])
       chunks = random_chunks(input)
 
       events = []
@@ -15,7 +17,7 @@ class ConduitStreamFuzzTest < Minitest::Test
       stream.on_parsed { |e| events << e }
       chunks.each { |chunk| stream << chunk }
 
-      assert_equal expected_events(["a", "b", "c", "d"]), events
+      assert_equal expected_events(%w[a b c d]), events
     end
   end
 

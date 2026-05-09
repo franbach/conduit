@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "test_helper"
 
 class ConduitStreamChaosFuzzTest < Minitest::Test
@@ -44,8 +46,8 @@ class ConduitStreamChaosFuzzTest < Minitest::Test
     "data: #{value}\n\n"
   end
 
-  def multiline_frame(a, b)
-    "data: #{a}\ndata: #{b}\n\n"
+  def multiline_frame(first, second)
+    "data: #{first}\ndata: #{second}\n\n"
   end
 
   def ping_frame

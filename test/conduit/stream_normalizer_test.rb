@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "test_helper"
 
 class ConduitStreamNormalizerTest < Minitest::Test
@@ -6,9 +8,9 @@ class ConduitStreamNormalizerTest < Minitest::Test
 
     stream = Conduit.new(
       parser: ->(p) { { data: p } },
-      chunk_normalizer: ->(chunk) {
+      chunk_normalizer: lambda do |chunk|
         chunk.gsub("PREFIX:", "")
-      }
+      end
     )
 
     stream.each { |e| events << e }

@@ -12,7 +12,7 @@ class ConduitStreamFinishTest < Minitest::Test
     stream = make_stream
     stream.on_parsed { |p| parsed << p }
 
-    stream << "data: hello"  # no trailing "\n\n"
+    stream << "data: hello" # no trailing "\n\n"
     assert_empty parsed, "must not emit before finish"
 
     stream.finish

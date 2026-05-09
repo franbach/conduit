@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Conduit
+  # Manages callback registration and execution for Conduit::Stream.
   class Callbacks
     FAILED = Object.new.freeze
 
