@@ -112,18 +112,22 @@ result = +""
 # Since OpenAI sends structured JSON in the data field, the parser converts it to a Hash,
 # making it easy to extract the delta content directly.
 stream.on_parsed do |parsed_data|
-  delta = parsed_data.dig("choices", 0, "delta", "content")
-  if delta
-    print delta
-    result += delta
+  type = parsed_data["type"]
 
-    # You can also emit the delta to a frontend app here if you will.
-    # emit_to_frontend(delta)
+  if type == "response.output_text.delta"
+    delta = parsed_data["delta"]
+    if delta
+      puts "parsed delta: #{delta}"
+      result += delta
+
+      # You can also emit the delta to a frontend app here if you will.
+      # emit_to_frontend(delta)
+    end
   end
 
-  finish_reason = parsed_data.dig("choices", 0, "finish_reason")
-  if finish_reason
-    puts "\n\nStream completed (reason: #{finish_reason})"
+  if type == "response.completed"
+    puts "\n\nResult: #{result}"
+    stream.close
   end
 end
 
@@ -133,24 +137,28 @@ end
 stream.on_field do |name, value|
   if name == "data"
     data = JSON.parse(value)
-    delta = data.dig("choices", 0, "delta", "content")
-    if delta
-      print delta
-      result += delta
+    type = data["type"]
 
-      # You can also emit the delta to a frontend app here if you will.
-      # emit_to_frontend(delta)
+    if type == "response.output_text.delta"
+      delta = data["delta"]
+      if delta
+        puts "delta: #{delta}"
+        result += delta
+
+        # You can also emit the delta to a frontend app here if you will.
+        # emit_to_frontend(delta)
+      end
     end
 
-    finish_reason = data.dig("choices", 0, "finish_reason")
-    if finish_reason
-      puts "\n\nStream completed (reason: #{finish_reason})"
+    if type == "response.completed"
+      puts "\n\nResult: #{result}"
+      stream.close
     end
   end
 end
 
 # Make the streaming request
-uri = URI("https://api.openai.com/v1/chat/completions")
+uri = URI("https://api.openai.com/v1/responses")
 http = Net::HTTP.new(uri.host, uri.port)
 http.use_ssl = true
 
@@ -159,10 +167,9 @@ request["Content-Type"] = "application/json"
 request["Authorization"] = "Bearer #{api_key}"
 
 request.body = JSON.generate({
-  model: "gpt-4o",
+  model: "gpt-4.1-mini",
   stream: true, # Enable streaming
-  messages: [
-    { role: "system", content: "You are a helpful assistant." },
+  input: [
     { role: "user", content: "Write a haiku about programming" }
   ]
 })
