@@ -181,7 +181,7 @@ http.request(request) do |response|
 end
 ```
 
-**Note:** OpenAI's Chat Completions API uses `data:` fields with JSON payloads. The response format includes `choices[0].delta.content` for streaming text chunks and `choices[0].finish_reason` when the stream completes. The `parser` extracts the delta content from each chunk as it arrives, allowing you to display the response in real-time.
+**Note:** OpenAI's Responses API uses `data:` fields with JSON payloads. The response format includes a `type` field to identify event types (`response.output_text.delta` for streaming text chunks, `response.completed` when the stream finishes). The `parser` extracts the delta content from each chunk as it arrives, allowing you to display the response in real-time.
 
 ### Callback System
 
