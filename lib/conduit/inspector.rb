@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../conduit"
-
 module Conduit
   # Attach to a Conduit::Stream to log every layer of activity to an IO.
   # Intended for development/debugging only.
