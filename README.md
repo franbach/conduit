@@ -127,7 +127,6 @@ stream.on_parsed do |parsed_data|
 
   if type == "response.completed"
     puts "\n\nResult: #{result}"
-    stream.close
   end
 end
 
@@ -152,7 +151,6 @@ stream.on_field do |name, value|
 
     if type == "response.completed"
       puts "\n\nResult: #{result}"
-      stream.close
     end
   end
 end
@@ -466,8 +464,7 @@ end
 
 # Process any trailing data not terminated by the frame separator
 stream.finish
-# or
-stream.close
+#
 ```
 
 This is useful when the HTTP connection closes cleanly without a trailing `\n\n`, which is common with many SSE servers. The method is safe to call multiple times and on empty buffers.
