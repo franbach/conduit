@@ -1,7 +1,7 @@
 # Conduit
 
 ![CI](https://github.com/franbach/conduit/actions/workflows/main.yml/badge.svg)
-![Gem Version](https://badge.fury.io/rb/conduit-sse.svg)
+[![Gem Version](https://badge.fury.io/rb/conduit-sse.svg)](https://badge.fury.io/rb/conduit-sse)
 
 Conduit is a lightweight, zero-dependency Ruby gem for parsing Server-Sent Events (SSE) streams. It provides a flexible callback-based architecture for processing real-time server push data with full control over every stage of the parsing pipeline.
 
