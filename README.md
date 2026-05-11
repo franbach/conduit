@@ -1,12 +1,21 @@
 # Conduit
 
+![CI](https://github.com/franbach/conduit/actions/workflows/main.yml/badge.svg)
+![Gem Version](https://badge.fury.io/rb/conduit-sse.svg)
+
 Conduit is a lightweight, zero-dependency Ruby gem for parsing Server-Sent Events (SSE) streams. It provides a flexible callback-based architecture for processing real-time server push data with full control over every stage of the parsing pipeline.
+
+## Design Philosophy
+
+Conduit acts as a **conductor**, it parses SSE streams and routes events to your callbacks, but it doesn't manage or control the SSE stream itself. You control the HTTP connection, reconnection logic, and stream lifecycle. Conduit handles the parsing and event routing.
+
+This separation keeps Conduit lightweight and flexible. You can use it with any HTTP client **(Net::HTTP, HTTParty, Faraday, etc.)** and implement your own reconnection logic. Conduit stays out of the way.
 
 ## Why Conduit?
 
 Building real-time applications with SSE shouldn't require wrestling with complex parsing logic or sacrificing performance for convenience. Conduit gives you:
 
-**🎯 Zero Dependencies** - Drop it into any Ruby project without worrying about dependency hell. Pure Ruby, no external gems.
+**🎯 Zero Dependencies** - Drop it into any Ruby project without worrying about dependency hell. Pure Ruby, no external gems. it works in any Ruby application (Rails, Sinatra, plain scripts, background jobs, etc.) and is not tied to any specific framework.
 
 **🔧 Complete Control** - Hook into every stage of the parsing pipeline with callbacks. Whether you need to transform data, forward to services, emit to frontends, or add observability. Conduit adapts to your architecture.
 
@@ -92,7 +101,7 @@ end
 
 ### OpenAI Streaming Example
 
-Here's a complete example using Conduit to stream responses from OpenAI's Chat Completions API:
+Here's a complete example using Conduit to stream responses from OpenAI's Responses API:
 
 ```ruby
 require "conduit"
@@ -179,7 +188,7 @@ http.request(request) do |response|
 end
 ```
 
-**Note:** OpenAI's Responses API uses `data:` fields with JSON payloads. The response format includes a `type` field to identify event types (`response.output_text.delta` for streaming text chunks, `response.completed` when the stream finishes). The `parser` extracts the delta content from each chunk as it arrives, allowing you to display the response in real-time.
+**Note:** OpenAI's Responses API uses `data:` fields with JSON payloads. The response format includes a `type` field to identify event types (`response.output_text.delta` for streaming text chunks, `response.completed` when the stream finishes). The `parser` extracts the data content from each frame as it arrives, allowing you to display the response in real-time.
 
 **Important:** Callbacks must be registered **before** the HTTP request starts. This ensures the stream knows what to do with incoming data as soon as chunks arrive.
 
@@ -226,6 +235,38 @@ stream.on_error do |error|
 end
 ```
 
+### Filtering Events
+
+Filter events by type directly on callback registration:
+
+```ruby
+stream = Conduit.new(parser: ->(data) { data })
+
+# Only process "message" events in this callback
+stream.on_event(type: "message") do |event|
+  puts "Message: #{event.data}"
+end
+
+# Process multiple event types
+stream.on_event(type: %w[message update]) do |event|
+  puts "Event: #{event.event}, Data: #{event.data}"
+end
+
+# Filter on_parsed callback
+stream.on_parsed(type: "message") do |parsed|
+  puts "Parsed message: #{parsed}"
+end
+
+# Register multiple callbacks with different filters
+stream.on_event(type: "message") { |e| puts "Message: #{e.data}" }
+stream.on_event(type: "update") { |e| puts "Update: #{e.data}" }
+
+# Callbacks without filters receive all events
+stream.on_event { |e| puts "All events: #{e.event}" }
+```
+
+The filter is per-callback, so you can have different handlers for different event types. Low-level callbacks (`on_frame`, `on_field`) are not affected by event type filters.
+
 ### Understanding Callback Differences
 
 It's important to understand the distinction between `on_frame`, `on_event`, and `on_parsed`/`each`:
@@ -234,7 +275,7 @@ It's important to understand the distinction between `on_frame`, `on_event`, and
 
 ```ruby
 stream.on_frame do |frame|
-  # frame is a string like "data: hello\n"
+  # frame is a string like "event: message\ndata: hello\nid: 123\n\n"
   puts frame
 end
 ```
@@ -451,9 +492,37 @@ puts stream.last_event_id  # => "123"
 puts stream.retry_ms       # => nil (unless server sends retry field)
 ```
 
+### Monitoring Stream Activity
+
+Conduit provides read-only methods for monitoring stream activity without the overhead of the Inspector:
+
+```ruby
+stream = Conduit.new(parser: ->(data) { data })
+
+# Check buffer size (useful for long-running streams)
+stream << "data: hello"
+puts stream.buffer_size  # => buffer size in bytes
+
+# Get stream statistics
+stream << "data: hello\n\n"
+puts stream.stats
+# => { chunk: 1, frame: 1, event: 1, parsed: 1, ping: 0, field: 1, error: 0, avg_fields_per_frame: 1.0 }
+```
+
+**Statistics keys:**
+
+- `chunk` - Number of chunks fed to the stream via `<<`
+- `frame` - Number of complete frames processed
+- `event` - Number of SSE events emitted (frames with data fields)
+- `parsed` - Number of successful parser results
+- `ping` - Number of ping/comment frames detected
+- `field` - Number of SSE field lines parsed (data, event, id, retry, etc.)
+- `error` - Number of errors raised by callbacks or the parser
+- `avg_fields_per_frame` - Average number of fields per frame
+
 ### Handling Stream Completion
 
-Use `finish` (or its alias `close`) to process any remaining data in the buffer when the stream ends:
+Use `finish` (or its alias `close`) once at the end of the stream to process any remaining data in the buffer:
 
 ```ruby
 stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
@@ -464,12 +533,17 @@ http.request(request) do |response|
   end
 end
 
-# Process any trailing data not terminated by the frame separator
+# Call finish once at the end as a just-in-case measure
 stream.finish
-#
 ```
 
-This is useful when the HTTP connection closes cleanly without a trailing `\n\n`, which is common with many SSE servers. The method is safe to call multiple times and on empty buffers.
+**Important notes:**
+
+- Call `finish` **once** at the end of the stream, not on each frame
+- Frames are automatically processed as they arrive via `<<`
+- `finish` is for the edge case where the HTTP connection closes without a trailing `\n\n`
+- If the buffer is empty, `finish` does nothing (safe to call)
+- Many SSE servers send proper frame separators, so you may not need `finish` at all, it's a defensive measure
 
 ### Error Handling
 

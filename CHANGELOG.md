@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-05-10
+
+### Added
+
+- `buffer_size` method for monitoring internal buffer size in bytes
+- `stats` method for stream statistics (chunk, frame, event, parsed, ping, field, error, avg_fields_per_frame)
+- Per-callback event filtering with `on_event(type:)` and `on_parsed(type:)` parameters
+- Custom configuration tests for chunk_normalizer, payload_start, frame_separator, ping_pattern, and sanitize_pattern
+- CI and gem version badges to README
+
+### Changed
+
+- Switched from global event filter to per-callback filtering for more flexibility
+- Improved README documentation with clearer finish usage instructions
+- Clarified design philosophy to emphasize that Conduit works in any Ruby application, not just Rails
+- Updated finish documentation to clarify it's a defensive measure for edge cases
+
 ## [0.1.1] - 2026-05-08
 
 ### Added
