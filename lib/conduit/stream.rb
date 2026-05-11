@@ -36,10 +36,36 @@ module Conduit
       @callbacks        = Callbacks.new
       @last_event_id    = nil
       @retry_ms         = nil
+      @last_event_type  = nil
+      @stats            = Hash.new(0)
+      @total_fields     = 0
     end
 
     # Stream state — last id/retry seen, per SSE spec semantics.
     attr_reader :last_event_id, :retry_ms
+
+    # Current buffer size in bytes.
+    #
+    # Returns the size of the internal buffer, useful for monitoring memory usage
+    # during long-running streams.
+    #
+    # @return [Integer] Buffer size in bytes
+    def buffer_size
+      @buffer.bytesize
+    end
+
+    # Stream statistics.
+    #
+    # Returns a hash with counts of all processed items, useful for monitoring
+    # and debugging without the overhead of the Inspector's logging.
+    #
+    # @return [Hash] Statistics hash with keys: :chunk, :frame, :event, :parsed, :ping, :field, :error, :avg_fields_per_frame
+    def stats
+      stats = @stats.dup
+      avg_fields = @stats[:frame].positive? ? (@total_fields.to_f / @stats[:frame]).round(2) : 0
+      stats[:avg_fields_per_frame] = avg_fields
+      stats
+    end
 
     # Raw chunk as it arrived (after normalization).
     #
@@ -75,9 +101,21 @@ module Conduit
     # Only called for frames that contain at least one data field.
     # Use this callback when you need access to SSE metadata (event type, id, retry).
     #
+    # @param type [String, Array<String>, nil] Optional event type(s) to filter by.
+    #   If provided, the callback only triggers for matching event types.
     # @yield [event] A Conduit::Event object
-    def on_event(&block)
-      @callbacks.on(:event, &block)
+    def on_event(type: nil, &block)
+      if type
+        wrapped_block = proc do |event|
+          filter_match = Array(type).include?(event.event)
+          next unless filter_match
+
+          block.call(event)
+        end
+        @callbacks.on(:event, &wrapped_block)
+      else
+        @callbacks.on(:event, &block)
+      end
     end
 
     # Result of running the configured parser over an event's data.
@@ -88,9 +126,23 @@ module Conduit
     # If the parser raises an error and an on_error handler is registered,
     # the error is routed to on_error and this callback is NOT invoked for that event.
     #
+    # @param type [String, Array<String>, nil] Optional event type(s) to filter by.
+    #   If provided, the callback only triggers for matching event types.
     # @yield [parsed] Whatever your parser lambda returns
-    def on_parsed(&block)
-      @callbacks.on(:parsed, &block)
+    def on_parsed(type: nil, &block)
+      if type
+        wrapped_block = proc do |parsed|
+          # We need access to the event type here, but on_parsed receives parsed data
+          # We need to track the last event type to filter properly
+          filter_match = Array(type).include?(@last_event_type || "message")
+          next unless filter_match
+
+          block.call(parsed)
+        end
+        @callbacks.on(:parsed, &wrapped_block)
+      else
+        @callbacks.on(:parsed, &block)
+      end
     end
 
     # Ping/comment frame.
@@ -126,7 +178,11 @@ module Conduit
     #
     # @yield [error] The exception that was raised
     def on_error(&block)
-      @callbacks.on(:error, &block)
+      wrapped_block = proc do |error|
+        @stats[:error] += 1
+        block.call(error)
+      end
+      @callbacks.on(:error, &wrapped_block)
     end
 
     # Feed a chunk of data to the stream for processing.
@@ -142,6 +198,7 @@ module Conduit
 
       @callbacks.emit(:chunk, chunk)
       @buffer << chunk
+      @stats[:chunk] += 1
 
       process_frames
       self
@@ -214,8 +271,11 @@ module Conduit
       frame = sanitize(frame)
       return if frame.empty?
 
+      @stats[:frame] += 1
+
       if ping?(frame)
         @callbacks.emit(:ping, frame)
+        @stats[:ping] += 1
         return
       end
 
@@ -223,9 +283,12 @@ module Conduit
 
       type = nil
       data_lines = []
+      frame_fields = 0
 
       parse_fields(frame).each do |name, value|
         @callbacks.emit(:field, name, value)
+        @stats[:field] += 1
+        frame_fields += 1
 
         case name
         when @data_field then data_lines << value
@@ -235,22 +298,27 @@ module Conduit
         end
       end
 
+      @total_fields += frame_fields
       return if data_lines.empty?
 
       data = data_lines.join("\n")
+      @last_event_type = type || "message"
+
       event = Event.new(
-        event: type || "message",
+        event: @last_event_type,
         data: data,
         id: @last_event_id,
         retry: @retry_ms
       )
 
       @callbacks.emit(:event, event)
+      @stats[:event] += 1
 
       parsed = @callbacks.call_safely(@parser, data)
       return if parsed.equal?(Callbacks::FAILED)
 
       @callbacks.emit(:parsed, parsed)
+      @stats[:parsed] += 1
     end
 
     # Per https://html.spec.whatwg.org/multipage/server-sent-events.html, parse one field per line:
