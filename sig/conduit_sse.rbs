@@ -1,0 +1,157 @@
+# RBS type signatures for ConduitSSE.
+#
+# These signatures describe the public API of the gem. They are validated by
+# Steep/RBS-based toolchains but do not affect runtime behavior.
+
+module ConduitSSE
+  VERSION: String
+
+  # Convenience factory that forwards to ConduitSSE::Stream.new.
+  # Accepts either keyword arguments, a configuration block, or both.
+  def self.new: (
+    ?parser: ^(String) -> untyped,
+    ?chunk_normalizer: ^(String) -> String,
+    ?frame_separator: String,
+    ?payload_start: String,
+    ?ping_pattern: String,
+    ?sanitize_pattern: ^(String) -> String,
+    ?stats: bool
+  ) ?{ (Config) -> void } -> Stream
+
+  # Immutable value object representing a parsed SSE event.
+  class Event
+    attr_reader event: String
+    attr_reader data: String
+    attr_reader id: String?
+    attr_reader retry: (Integer | String)?
+
+    def self.new: (
+      event: String,
+      data: String,
+      id: String?,
+      retry: (Integer | String)?
+    ) -> Event
+
+    def with: (**untyped) -> Event
+    def ==: (untyped) -> bool
+  end
+
+  # Callback registry used internally by Stream.
+  class Callbacks
+    FAILED: Object
+
+    def initialize: () -> void
+    def on: (Symbol name) { (*untyped) -> void } -> void
+    def emit: (Symbol name, *untyped args) -> void
+    def call_safely: (^(*untyped) -> untyped callable, *untyped args) -> untyped
+  end
+
+  # Default chunk/frame/field configuration.
+  module Defaults
+    PING_PATTERN: String
+    FRAME_SEPARATOR: String
+    PAYLOAD_START: String
+    SANITIZE_PATTERN: ^(String) -> String
+    CHUNK_NORMALIZER: ^(String) -> String
+
+    def self.to_utf8: (String string) -> String
+  end
+
+  # Mutable configuration for ConduitSSE::Stream.
+  class Config
+    SETTABLE_KEYS: Array[Symbol]
+
+    attr_accessor parser: ^(String) -> untyped
+    attr_accessor chunk_normalizer: ^(String) -> String
+    attr_accessor frame_separator: String
+    attr_accessor payload_start: String
+    attr_accessor ping_pattern: String
+    attr_accessor sanitize_pattern: ^(String) -> String
+    attr_accessor stats: bool
+
+    def self.new: (
+      ?parser: ^(String) -> untyped,
+      ?chunk_normalizer: ^(String) -> String,
+      ?frame_separator: String,
+      ?payload_start: String,
+      ?ping_pattern: String,
+      ?sanitize_pattern: ^(String) -> String,
+      ?stats: bool
+    ) -> Config
+
+    # Raises ArgumentError unless `parser` responds to `:call`.
+    def validate!: () -> void
+
+    # Validates, computes derived values, and freezes self.
+    def finalize!: () -> self
+
+    # Derived from `payload_start` once `finalize!` has run.
+    attr_reader data_field: String
+  end
+
+  # Runtime, per-stream mutable state.
+  class State
+    attr_accessor last_event_id: String?
+    attr_accessor retry_ms: (Integer | String)?
+    attr_accessor last_event_type: String?
+    attr_reader buffer: String
+    attr_reader callbacks: Callbacks
+
+    def initialize: (stats_enabled: bool) -> void
+    def buffer_size: () -> Integer
+    def stats_enabled?: () -> bool
+    def increment_stat: (Symbol) -> void
+    def add_fields: (Integer) -> void
+    def stats_snapshot: () -> Hash[Symbol, (Integer | Float)]?
+  end
+
+  # Core streaming parser for Server-Sent Events (SSE).
+  class Stream
+    attr_reader config: Config
+    attr_reader state: State
+
+    def last_event_id: () -> String?
+    def retry_ms: () -> (Integer | String)?
+
+    def initialize: (
+      ?parser: ^(String) -> untyped,
+      ?chunk_normalizer: ^(String) -> String,
+      ?frame_separator: String,
+      ?payload_start: String,
+      ?ping_pattern: String,
+      ?sanitize_pattern: ^(String) -> String,
+      ?stats: bool
+    ) ?{ (Config) -> void } -> void
+
+    def buffer_size: () -> Integer
+
+    # Returns nil unless the stream was constructed with `stats: true`.
+    def stats: () -> Hash[Symbol, (Integer | Float)]?
+
+    def on_chunk: () { (String) -> void } -> void
+    def on_frame: () { (String) -> void } -> void
+    def on_field: () { (String, String) -> void } -> void
+    def on_ping: () { (String) -> void } -> void
+    def on_error: () { (Exception) -> void } -> void
+
+    def on_event: (?type: (String | Array[String])?) { (Event) -> void } -> void
+    def on_parsed: (?type: (String | Array[String])?) { (untyped) -> void } -> void
+
+    def <<: (String chunk) -> self
+    def finish: () -> self
+    alias close finish
+
+    def each: () ?{ (untyped) -> void } -> (self | Enumerator[untyped, self])
+  end
+
+  # Development/debug logger that attaches to a Stream.
+  class Inspector
+    attr_reader counts: Hash[Symbol, Integer]
+
+    def self.attach: (Stream stream, ?io: IO) -> Inspector
+
+    def initialize: (Stream stream, io: IO) -> void
+    def attach: () -> self
+    def summary: () -> void
+  end
+end

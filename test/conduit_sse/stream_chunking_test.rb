@@ -6,7 +6,7 @@ class ConduitStreamChunkingTest < Minitest::Test
   def test_handles_split_chunks
     events = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } })
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } })
 
     stream.each { |e| events << e }
 
@@ -19,7 +19,7 @@ class ConduitStreamChunkingTest < Minitest::Test
   def test_handles_multiple_splits
     events = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } })
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } })
 
     stream.each { |e| events << e }
 
@@ -34,7 +34,7 @@ class ConduitStreamChunkingTest < Minitest::Test
   def test_handles_chunk_with_multiple_frames_and_partial_tail
     events = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } })
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } })
 
     stream.each { |e| events << e }
 

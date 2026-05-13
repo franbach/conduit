@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-12
+
+### Breaking
+
+- Renamed top-level module from `Conduit` to `ConduitSSE` to avoid namespace
+  collisions with other `conduit`-named gems in the Ruby ecosystem. Update
+  call sites from `Conduit.new(...)` to `ConduitSSE.new(...)` and from
+  `Conduit::Event`/`Conduit::Inspector` to `ConduitSSE::Event`/`ConduitSSE::Inspector`.
+- The canonical `require` path is now `require "conduit_sse"`. The
+  bundler auto-require shim (`require "conduit-sse"`) continues to work.
+- Source layout moved from `lib/conduit/` to `lib/conduit_sse/`.
+- Per-stage stats tracking is now **opt-in**. Construct streams with
+  `ConduitSSE.new(..., stats: true)` to enable. When disabled (the default),
+  `Stream#stats` returns `nil` and the parser does zero counter bookkeeping
+  per event. This eliminates any concern about stats overhead on hot paths.
+
+### Added
+
+- Block-form configuration for `ConduitSSE.new` / `ConduitSSE::Stream.new`.
+  In addition to keyword arguments, callers can pass a block that receives
+  a mutable `ConduitSSE::Config` instance:
+
+  ```ruby
+  ConduitSSE.new do |c|
+    c.parser = ->(d) { JSON.parse(d) }
+    c.stats  = true
+  end
+  ```
+
+  Both forms can be mixed; kwargs seed the config and the block overrides.
+
+- **`ConduitSSE::Config`** — new public class. Holds the seven parsing knobs,
+  loads its own defaults, validates unknown keys, and exposes a `finalize!`
+  method that runs validation, computes the derived `data_field`, and
+  freezes the instance. Accessible at runtime as `stream.config`.
+- **`ConduitSSE::State`** — new public class. Holds the per-stream mutable
+  runtime: input buffer, callbacks registry, last event id / retry / type,
+  and (when enabled) the stats counter hash. Exposes a null-object
+  `#increment_stat` / `#add_fields` so the stream has no `if @stats`
+  branching at counter call sites. Accessible as `stream.state`.
+- **`Stream#config`** and **`Stream#state`** attr_readers for introspection.
+- RBS type signatures shipped under `sig/` for the public API.
+- `Architecture` README section now includes an ASCII pipeline diagram.
+- Documented that `#stats` and the `Inspector` have different performance
+  profiles: both are now opt-in, with `#stats` costing O(1) per event when
+  enabled and `Inspector` only active when attached.
+
 ## [1.0.0] - 2026-05-10
 
 ### Added

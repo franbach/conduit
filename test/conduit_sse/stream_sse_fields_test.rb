@@ -4,10 +4,10 @@ require "test_helper"
 
 class ConduitStreamSseFieldsTest < Minitest::Test
   def make_stream
-    Conduit.new(parser: ->(d) { d })
+    ConduitSSE.new(parser: ->(d) { d })
   end
 
-  # on_event fires with Conduit::Event
+  # on_event fires with ConduitSSE::Event
 
   def test_on_event_emits_full_event_with_defaults
     events = []
@@ -17,7 +17,7 @@ class ConduitStreamSseFieldsTest < Minitest::Test
     stream << "data: hello\n\n"
 
     assert_equal 1, events.size
-    assert_kind_of Conduit::Event, events.first
+    assert_kind_of ConduitSSE::Event, events.first
     assert_equal "hello",   events.first.data
     assert_equal "message", events.first.event
     assert_nil events.first.id
@@ -149,7 +149,7 @@ class ConduitStreamSseFieldsTest < Minitest::Test
 
   def test_callbacks_fire_in_layered_order
     order = []
-    stream = Conduit.new(parser: lambda { |d|
+    stream = ConduitSSE.new(parser: lambda { |d|
       order << :parser
       d.upcase
     })
@@ -166,7 +166,7 @@ class ConduitStreamSseFieldsTest < Minitest::Test
 
   def test_parser_receives_data_string
     received = nil
-    stream = Conduit.new(parser: lambda { |d|
+    stream = ConduitSSE.new(parser: lambda { |d|
       received = d
       d
     })

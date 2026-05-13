@@ -1,3 +1,3 @@
 # frozen_string_literal: true
 
-require_relative "conduit"
+require_relative "conduit_sse"

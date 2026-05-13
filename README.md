@@ -1,29 +1,30 @@
-# Conduit
+# ConduitSSE
 
 ![CI](https://github.com/franbach/conduit/actions/workflows/main.yml/badge.svg)
-[![Gem Version](https://badge.fury.io/rb/conduit-sse.svg)](https://badge.fury.io/rb/conduit-sse)
+[![Gem Version](https://img.shields.io/gem/v/conduit-sse.svg)](https://rubygems.org/gems/conduit-sse)
+[![Downloads](https://img.shields.io/gem/dt/conduit-sse.svg)](https://rubygems.org/gems/conduit-sse)
 
-Conduit is a lightweight, zero-dependency Ruby gem for parsing Server-Sent Events (SSE) streams. It provides a flexible callback-based architecture for processing real-time server push data with full control over every stage of the parsing pipeline.
+ConduitSSE is a lightweight, zero-dependency Ruby gem for parsing Server-Sent Events (SSE) streams. It provides a flexible callback-based architecture for processing real-time server push data with full control over every stage of the parsing pipeline.
 
 ## Design Philosophy
 
-Conduit acts as a **conductor**, it parses SSE streams and routes events to your callbacks, but it doesn't manage or control the SSE stream itself. You control the HTTP connection, reconnection logic, and stream lifecycle. Conduit handles the parsing and event routing.
+ConduitSSE acts as a **conductor**, it parses SSE streams and routes events to your callbacks, but it doesn't manage or control the SSE stream itself. You control the HTTP connection, reconnection logic, and stream lifecycle. ConduitSSE handles the parsing and event routing.
 
-This separation keeps Conduit lightweight and flexible. You can use it with any HTTP client **(Net::HTTP, HTTParty, Faraday, etc.)** and implement your own reconnection logic. Conduit stays out of the way.
+This separation keeps ConduitSSE lightweight and flexible. You can use it with any HTTP client **(Net::HTTP, HTTParty, Faraday, etc.)** and implement your own reconnection logic. ConduitSSE stays out of the way.
 
-## Why Conduit?
+## Why ConduitSSE?
 
-Building real-time applications with SSE shouldn't require wrestling with complex parsing logic or sacrificing performance for convenience. Conduit gives you:
+Building real-time applications with SSE shouldn't require wrestling with complex parsing logic or sacrificing performance for convenience. ConduitSSE gives you:
 
 **🎯 Zero Dependencies** - Drop it into any Ruby project without worrying about dependency hell. Pure Ruby, no external gems. it works in any Ruby application (Rails, Sinatra, plain scripts, background jobs, etc.) and is not tied to any specific framework.
 
-**🔧 Complete Control** - Hook into every stage of the parsing pipeline with callbacks. Whether you need to transform data, forward to services, emit to frontends, or add observability. Conduit adapts to your architecture.
+**🔧 Complete Control** - Hook into every stage of the parsing pipeline with callbacks. Whether you need to transform data, forward to services, emit to frontends, or add observability. ConduitSSE adapts to your architecture.
 
 **📡 Production Ready** - Built for real-world use with robust error handling, SSE spec compliance, and a built-in inspector for debugging. Streams from AI providers, or any SSE endpoint just work.
 
 **⚡ Flexible Parsers** - Your parser lambda can do anything: JSON parsing, YAML loading, custom transformations, or domain-specific logic. You're not locked into any data shape.
 
-**🔍 Granular Access** - Need to handle non-standard SSE fields? Want raw frame access? Conduit provides both spec-compliant callbacks (`on_event`, `on_parsed`) and low-level access (`on_frame`, `on_field`) for maximum flexibility.
+**🔍 Granular Access** - Need to handle non-standard SSE fields? Want raw frame access? ConduitSSE provides both spec-compliant callbacks (`on_event`, `on_parsed`) and low-level access (`on_frame`, `on_field`) for maximum flexibility.
 
 Perfect for streaming AI responses, real-time analytics, live updates, and any application that needs to process server-push events efficiently.
 
@@ -52,15 +53,50 @@ gem install conduit-sse
 
 ## Usage
 
-### Basic Example
+### Configuring a Stream
 
-At its core, Conduit processes SSE data chunks and emits callbacks at each stage:
+The canonical way to build a stream is with a configuration block. The block
+receives a mutable {ConduitSSE::Config} that exposes every knob as a setter:
 
 ```ruby
-require "conduit"
+stream = ConduitSSE.new do |c|
+  c.parser          = ->(d) { JSON.parse(d) }
+  c.stats           = true
+  c.frame_separator = "\r\n\r\n"
+end
+```
+
+For one- or two-knob setups, plain keyword arguments are equally fine:
+
+```ruby
+stream = ConduitSSE.new(parser: ->(d) { JSON.parse(d) }, stats: true)
+```
+
+The two forms can also be combined — kwargs seed the config, the block then
+mutates whatever it wants on top:
+
+```ruby
+stream = ConduitSSE.new(parser: ->(d) { d }) do |c|
+  c.stats = true
+end
+```
+
+The full list of settings (with defaults) lives on `ConduitSSE::Config`:
+`parser` (required), `chunk_normalizer`, `frame_separator`, `payload_start`,
+`ping_pattern`, `sanitize_pattern`, `stats`. Unknown keys raise an explicit
+`ArgumentError` at construction time, so typos surface immediately.
+
+### Basic Example
+
+At its core, ConduitSSE processes SSE data chunks and emits callbacks at each stage:
+
+```ruby
+require "conduit_sse"
 
 # Create a stream with a parser that transforms event data
-stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
+stream = ConduitSSE.new do |c|
+  c.parser = ->(data) { JSON.parse(data) }
+end
 
 # Subscribe to parsed events
 stream.on_parsed do |parsed|
@@ -76,12 +112,14 @@ stream << "data: {\"message\": \"hello\"}\n\n"
 Here's a complete example connecting to an SSE endpoint:
 
 ```ruby
-require "conduit"
+require "conduit_sse"
 require "net/http"
 require "uri"
 require "json"
 
-stream = Conduit.new(parser: ->(d) { JSON.parse(d) rescue d })
+stream = ConduitSSE.new do |c|
+  c.parser = ->(d) { JSON.parse(d) rescue d }
+end
 
 stream.on_parsed do |parsed|
   next unless parsed.is_a?(Hash)
@@ -101,10 +139,10 @@ end
 
 ### OpenAI Streaming Example
 
-Here's a complete example using Conduit to stream responses from OpenAI's Responses API:
+Here's a complete example using ConduitSSE to stream responses from OpenAI's Responses API:
 
 ```ruby
-require "conduit"
+require "conduit_sse"
 require "net/http"
 require "uri"
 require "json"
@@ -113,7 +151,9 @@ require "json"
 api_key = "your-api-key-here"
 
 # Create the stream with a parser that extracts the delta content
-stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
+stream = ConduitSSE.new do |c|
+  c.parser = ->(data) { JSON.parse(data) }
+end
 
 result = +""
 
@@ -194,10 +234,10 @@ end
 
 ### Callback System
 
-Conduit provides callbacks at every stage of processing:
+ConduitSSE provides callbacks at every stage of processing:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
 # Raw chunk as it arrived (after normalization)
 stream.on_chunk do |chunk|
@@ -240,7 +280,7 @@ end
 Filter events by type directly on callback registration:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
 # Only process "message" events in this callback
 stream.on_event(type: "message") do |event|
@@ -280,11 +320,11 @@ stream.on_frame do |frame|
 end
 ```
 
-**`on_event`** - Receives a fully parsed `Conduit::Event` object with SSE metadata:
+**`on_event`** - Receives a fully parsed `ConduitSSE::Event` object with SSE metadata:
 
 ```ruby
 stream.on_event do |event|
-  # event is a Conduit::Event object
+  # event is a ConduitSSE::Event object
   puts event.event  # Event type (e.g., "message")
   puts event.data   # Data field content (joined data lines)
   puts event.id     # Last event ID (if sent by server)
@@ -295,7 +335,7 @@ end
 **`each` / `on_parsed`** - Receives the result of your custom parser (the `parser:` lambda):
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { JSON.parse(data) } }
 
 stream.each do |parsed|
   # parsed is whatever your parser returns
@@ -310,19 +350,19 @@ end
 2. Chunks are buffered and split into frames
 3. Frame is sanitized → `on_frame` (string)
 4. Frame is parsed into SSE fields → `on_field` (name, value pairs)
-5. Event object is constructed → `on_event` (Conduit::Event)
+5. Event object is constructed → `on_event` (ConduitSSE::Event)
 6. Your parser transforms the data → `on_parsed`/`each` (your custom output)
 
 **Key nuance:** The parser receives **only the data field content** (joined by newlines), not the entire frame. If you need access to other fields (event type, id, retry), use `on_event` instead.
 
 ### Callback Philosophy
 
-Conduit's callback system is designed around two complementary approaches:
+ConduitSSE's callback system is designed around two complementary approaches:
 
 **SSE-Spec Callbacks** (`on_event`, `on_parsed`)
 
 - These callbacks are tied to the SSE specification
-- `on_event` receives a structured `Conduit::Event` object with standard SSE fields (event type, data, id, retry)
+- `on_event` receives a structured `ConduitSSE::Event` object with standard SSE fields (event type, data, id, retry)
 - `on_parsed` receives the output of your custom parser, which operates on the data field content
 - Use these when working with spec-compliant SSE streams or when you want structured, predictable data
 
@@ -335,14 +375,14 @@ Conduit's callback system is designed around two complementary approaches:
 
 **Choosing between approaches:**
 
-- If the SSE stream follows the specification, `on_event` with `Conduit::Event` provides a structured, spec-compliant representation of the event
+- If the SSE stream follows the specification, `on_event` with `ConduitSSE::Event` provides a structured, spec-compliant representation of the event
 - If the frame deviates from the SSE specification or uses custom/non-standard fields, `on_frame` gives you raw access to the frame content, allowing you to handle it independently of the specification
 - Use `on_field` to inspect individual fields when you need to handle custom or non-standard field names
 - Your `parser` lambda can implement any logic needed: JSON parsing, YAML loading, custom transformations, validation, or domain-specific processing
 
 ### Common Use Cases
 
-Conduit's callback system makes it easy to integrate SSE streams into your application architecture:
+ConduitSSE's callback system makes it easy to integrate SSE streams into your application architecture:
 
 **Forwarding to Services**
 
@@ -379,11 +419,13 @@ end
 **Data Transformation**
 
 ```ruby
-stream = Conduit.new(parser: ->(data) {
-  # Transform raw data into your domain models
-  raw = JSON.parse(data)
-  MyDomainModel.new(raw)
-})
+stream = ConduitSSE.new do |c|
+  c.parser = ->(data) {
+    # Transform raw data into your domain models
+    raw = JSON.parse(data)
+    MyDomainModel.new(raw)
+  }
+end
 
 stream.on_parsed do |model|
   # Work with your domain objects directly
@@ -413,7 +455,7 @@ end
 
 ### Event Object
 
-Parsed events are returned as `Conduit::Event` objects with the following attributes:
+Parsed events are returned as `ConduitSSE::Event` objects with the following attributes:
 
 - `event` - Event type (defaults to "message")
 - `data` - The event data string
@@ -431,44 +473,53 @@ end
 
 ### Customization Options
 
-You can customize the parsing behavior with these options:
+Every setting lives on `ConduitSSE::Config` and can be set via the block:
 
 ```ruby
-stream = Conduit.new(
+stream = ConduitSSE.new do |c|
   # Required: A callable that receives the joined data field content (string)
-  # and returns whatever shape your application needs (e.g., JSON.parse, YAML.load, etc.)
-  parser: ->(data) { JSON.parse(data) },
+  # and returns whatever shape your application needs (e.g., JSON.parse, YAML.load).
+  c.parser = ->(data) { JSON.parse(data) }
 
   # Optional: Transforms incoming chunks before processing.
-  # The default normalizer performs UTF-8 conversion and CRLF→LF normalization.
-  # NOTE: Providing your own completely replaces the default behavior,
-  # including UTF-8 conversion. If you need UTF-8 handling, you must implement it yourself.
-  chunk_normalizer: ->(chunk) { chunk.upcase },
+  # Default: UTF-8 conversion + CRLF→LF normalization.
+  # NOTE: Replacing the default fully replaces UTF-8 handling; if you need it,
+  # implement it yourself.
+  c.chunk_normalizer = ->(chunk) { chunk.upcase }
 
-  # Optional: Delimiter that separates frames in the stream (default: "\n\n")
-  frame_separator: "\r\n\r\n",
+  # Optional: Delimiter that separates frames in the stream.
+  # Default: "\n\n"
+  c.frame_separator = "\r\n\r\n"
 
   # Optional: Prefix used to identify the data field.
-  # The trailing ":" is stripped to derive the field name (default: "data:")
-  payload_start: "data:",
+  # The trailing ":" is stripped to derive the field name.
+  # Default: "data:"
+  c.payload_start = "data:"
 
-  # Optional: Pattern identifying ping/comment frames (default: ":")
-  ping_pattern: ":",
+  # Optional: Pattern identifying ping/comment frames.
+  # Default: ":"
+  c.ping_pattern = ":"
 
   # Optional: Cleans or validates frame content after splitting.
-  # The default sanitizer strips whitespace and performs UTF-8 conversion.
-  # NOTE: Providing your own completely replaces the default behavior,
-  # including UTF-8 handling. If you need UTF-8 handling, you must implement it yourself.
-  sanitize_pattern: ->(frame) { frame.strip }
-)
+  # Default: UTF-8 conversion + strip.
+  # NOTE: Replacing the default fully replaces UTF-8 handling.
+  c.sanitize_pattern = ->(frame) { frame.strip }
+
+  # Optional: Enables the per-stage counter hash exposed via #stats.
+  # Default: false (off; #stats returns nil).
+  c.stats = true
+end
 ```
+
+The same options also work as keyword arguments to `ConduitSSE.new(...)` if you
+prefer a compact one-liner.
 
 ### Using `each` for Enumerable Interface
 
 For a simpler interface, use `each` to iterate over parsed events:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
 stream.each do |parsed|
   puts "Received: #{parsed}"
@@ -481,10 +532,12 @@ stream << "data: world\n\n"
 
 ### Accessing SSE State
 
-Conduit tracks SSE spec state that you can access:
+ConduitSSE tracks SSE spec state that you can access directly on the stream
+(or through the underlying `stream.state` object, see
+[Architecture: Config and State](#architecture-config-and-state)):
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
 stream << "id: 123\ndata: hello\n\n"
 
@@ -494,18 +547,36 @@ puts stream.retry_ms       # => nil (unless server sends retry field)
 
 ### Monitoring Stream Activity
 
-Conduit provides read-only methods for monitoring stream activity without the overhead of the Inspector:
+ConduitSSE provides read-only methods for monitoring stream activity without the overhead of the Inspector:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
-# Check buffer size (useful for long-running streams)
+# Check buffer size — always available, zero-cost (one bytesize lookup).
 stream << "data: hello"
 puts stream.buffer_size  # => buffer size in bytes
+```
 
-# Get stream statistics
+#### Stats are opt-in
+
+Per-stage counters are **disabled by default**. Set `c.stats = true` (or pass
+`stats: true` as a kwarg) to enable them. When stats are off, `#stats` returns
+`nil` and the parser performs no counter bookkeeping per event — important on
+hot paths at high event rates.
+
+```ruby
+# Default: stats disabled
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 stream << "data: hello\n\n"
-puts stream.stats
+stream.stats  # => nil
+
+# Opt in:
+stream = ConduitSSE.new do |c|
+  c.parser = ->(data) { data }
+  c.stats  = true
+end
+stream << "data: hello\n\n"
+stream.stats
 # => { chunk: 1, frame: 1, event: 1, parsed: 1, ping: 0, field: 1, error: 0, avg_fields_per_frame: 1.0 }
 ```
 
@@ -525,7 +596,7 @@ puts stream.stats
 Use `finish` (or its alias `close`) once at the end of the stream to process any remaining data in the buffer:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { JSON.parse(data) } }
 
 http.request(request) do |response|
   response.read_body do |chunk|
@@ -550,7 +621,7 @@ stream.finish
 Errors in callbacks are routed to the `on_error` handler, preventing stream interruption:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { JSON.parse(data) } }
 
 stream.on_error do |error|
   puts "Caught error: #{error.message}"
@@ -574,13 +645,13 @@ require "net/http"
 require "uri"
 require "json"
 
-stream = Conduit.new(parser: ->(data) { JSON.parse(data) })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { JSON.parse(data) } }
 
 # Attach inspector to log everything to stdout
-Conduit::Inspector.attach(stream)
+ConduitSSE::Inspector.attach(stream)
 
 # Or log to a different IO
-Conduit::Inspector.attach(stream, io: $stderr)
+ConduitSSE::Inspector.attach(stream, io: $stderr)
 
 # You'll see [CHUNK], [FRAME], [FIELD], [EVENT], [PARSED] lines as data flows.
 # Wikimedia tends to emit event:, id:, data: and occasional : ping keep-alives.
@@ -611,7 +682,7 @@ The inspector logs:
 You can register multiple callbacks for the same event type:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
 stream.on_parsed do |parsed|
   puts "Handler 1: #{parsed}"
@@ -627,10 +698,10 @@ stream << "data: hello\n\n"
 
 ### Custom Field Handling
 
-Conduit emits all SSE fields, including custom ones:
+ConduitSSE emits all SSE fields, including custom ones:
 
 ```ruby
-stream = Conduit.new(parser: ->(data) { data })
+stream = ConduitSSE.new { |c| c.parser = ->(data) { data } }
 
 stream.on_field do |name, value|
   case name
@@ -646,17 +717,113 @@ stream << "data: hello\ncustom-field: value\n\n"
 
 ## Architecture
 
-Conduit processes data through these stages:
+ConduitSSE processes data through a nine-stage pipeline. Each stage has a
+dedicated callback hook so you can tap in at whatever level matches the
+server's behavior (spec-compliant or not):
 
-1. **Chunk Normalization** - Raw chunks are normalized (UTF-8 conversion, CRLF→LF)
-2. **Buffering** - Chunks are buffered until frame boundaries are found
-3. **Frame Splitting** - Frames are split by the separator (default: `\n\n`)
-4. **Sanitization** - Frames are sanitized (default: strip whitespace)
-5. **Ping Detection** - Ping/comment frames are identified
-6. **Field Parsing** - SSE fields are parsed per the HTML spec
-7. **Event Construction** - Events are built from parsed fields
-8. **Parser Application** - Your custom parser transforms event data
-9. **Callback Emission** - Callbacks are invoked at each stage
+```mermaid
+flowchart TD
+    In([HTTP body chunks]) --> S1
+
+    S1["1 · Chunk Normalize<br/><sub>UTF-8, CRLF→LF</sub>"] -.->|on_chunk| CB1(["chunk"])
+    S1 --> S2["2 · Buffer<br/><sub>accumulate</sub>"]
+    S2 --> S3["3 · Frame Split<br/><sub>\\n\\n boundary</sub>"]
+    S3 --> S4["4 · Sanitize<br/><sub>strip, utf-8</sub>"]
+    S4 --> S5{{"5 · Ping Detect"}}
+    S5 -.->|on_ping<br/>short-circuit| CB2(["ping frame"])
+    S5 -->|not a ping| S5b["on_frame"]
+    S5b -.->|on_frame| CB3(["frame"])
+    S5b --> S6["6 · Field Parse<br/><sub>spec §9.2.6</sub>"]
+    S6 -.->|on_field<br/>every line| CB4(["name, value"])
+    S6 --> S7["7 · Event Construct<br/><sub>event / id / retry</sub>"]
+    S7 -.->|on_event| CB5(["ConduitSSE::Event"])
+    S7 --> S8["8 · Parser Apply<br/><sub>your lambda</sub>"]
+    S8 -.->|on_parsed| CB6(["parser result"])
+
+    Err(["on_error(exception)"])
+    S1 & S4 & S6 & S7 & S8 -.->|any raise| Err
+
+    classDef stage fill:#1f2937,stroke:#60a5fa,color:#f9fafb;
+    classDef cb fill:#064e3b,stroke:#34d399,color:#ecfdf5;
+    classDef err fill:#7f1d1d,stroke:#f87171,color:#fef2f2;
+    class S1,S2,S3,S4,S5,S5b,S6,S7,S8 stage;
+    class CB1,CB2,CB3,CB4,CB5,CB6 cb;
+    class Err err;
+```
+
+Stage-by-stage:
+
+- **1. Chunk Normalization** — Raw chunks are normalized (UTF-8 conversion, CRLF→LF).
+- **2. Buffering** — Chunks are buffered until frame boundaries are found.
+- **3. Frame Splitting** — Frames are split by the separator (default: `\n\n`).
+- **4. Sanitization** — Frames are sanitized (default: strip whitespace).
+- **5. Ping Detection** — Ping/comment frames are identified and short-circuited.
+- **6. Field Parsing** — SSE fields are parsed per the HTML spec.
+- **7. Event Construction** — Events are built from parsed fields.
+- **8. Parser Application** — Your custom parser transforms event data.
+- **9. Callback Emission** — Callbacks are invoked at each stage.
+
+### Architecture: Config and State
+
+Internally a `Stream` is the composition of two distinct objects, each with a
+different lifecycle:
+
+```text
+ConduitSSE::Stream                          ← glues the two together
+  ├─ #config : ConduitSSE::Config           ← what to do (frozen after construction)
+  └─ #state  : ConduitSSE::State            ← where we are (mutated per event)
+```
+
+- **`ConduitSSE::Config`** holds the seven parsing knobs (parser, normalizers,
+  separators, patterns, the `stats` flag). It's populated via kwargs and/or
+  the configuration block, validated, has its derived `data_field` computed,
+  and is then **frozen** — accidental mid-stream mutation raises
+  `FrozenError`. Both forms of public access work the same way:
+
+  ```ruby
+  stream.config.parser           # => your parser lambda
+  stream.config.frame_separator  # => "\n\n"
+  stream.config.frozen?          # => true
+  ```
+
+- **`ConduitSSE::State`** holds the per-stream mutable runtime: the input
+  buffer, the registered `Callbacks`, `last_event_id` / `retry_ms` /
+  `last_event_type` as they're observed on the wire, and (when enabled) the
+  stats counter hash. It's accessible via `stream.state` for inspection:
+
+  ```ruby
+  stream.state.buffer_size       # bytes pending in the buffer
+  stream.state.last_event_id     # last `id:` seen
+  stream.state.stats_enabled?    # true iff stats: true was passed
+  ```
+
+The `#last_event_id`, `#retry_ms`, `#buffer_size`, and `#stats` methods on
+`Stream` are thin forwarders to the underlying `State`, so you rarely need to
+reach into `stream.state` directly — but it's there when you want to
+introspect a stream from the outside (tests, dashboards, custom tooling).
+
+### Performance Notes: Stats vs. Inspector
+
+The `#stats` hash and the `ConduitSSE::Inspector` are **not** the same mechanism
+and have very different performance profiles:
+
+- **`#stats` is opt-in** (`c.stats = true` in the block, or `stats: true` as a
+  kwarg). When disabled (the default), `#stats` returns `nil` and the stream
+  performs **zero** per-event counter bookkeeping. The State object exposes
+  `#increment_stat` and `#add_fields` as null-object methods that return
+  immediately when stats are off, so there is no per-call-site `if @stats`
+  branching in the hot path. When enabled, the cost is O(1) per event: a
+  handful of `Hash#[]+=` increments on a `Hash.new(0)` inside
+  `process_frame`. Either way: no string formatting, no I/O. Safe to leave
+  on in production if you want the metrics; safe to leave off if you don't.
+- **`ConduitSSE::Inspector` is strictly opt-in.** It only does work after you
+  call `ConduitSSE::Inspector.attach(stream)`. Attachment registers regular
+  user callbacks (`on_chunk`, `on_frame`, …) that do `inspect`, string
+  interpolation, and `IO#puts`. Those are **not** zero-cost — keep the
+  inspector off in production and use it for local debugging only.
+- **Unregistered callbacks are free.** `Callbacks#emit` returns immediately
+  when no handler is registered for a given stage; there is no hidden
+  per-stage allocation or dispatch cost for callbacks you didn't set up.
 
 ## Development
 

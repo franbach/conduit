@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
-require_relative "lib/conduit/version"
+require_relative "lib/conduit_sse/version"
 
 Gem::Specification.new do |spec|
   spec.name = "conduit-sse"
-  spec.version = Conduit::VERSION
+  spec.version = ConduitSSE::VERSION
   spec.authors = ["franbach"]
   spec.email = ["franciscobach@gmail.com"]
 
   spec.summary = "A lightweight, zero-dependency Ruby gem for parsing Server-Sent Events (SSE) streams"
-  spec.description = "Conduit provides a flexible callback-based architecture for processing real-time server push data with full control over every stage of the parsing pipeline. Perfect for streaming AI responses, real-time analytics, and live updates."
+  spec.description = "ConduitSSE provides a flexible callback-based architecture for processing real-time server push data with full control over every stage of the parsing pipeline. Perfect for streaming AI responses, real-time analytics, and live updates."
   spec.homepage = "https://github.com/franbach/conduit"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"

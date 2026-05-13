@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-module Conduit
-  # Default configurations for Conduit::Stream
+module ConduitSSE
+  # Default configurations for ConduitSSE::Stream
   module Defaults
     PING_PATTERN    = ":"
     FRAME_SEPARATOR = "\n\n"

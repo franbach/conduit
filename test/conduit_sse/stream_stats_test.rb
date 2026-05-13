@@ -3,8 +3,43 @@
 require "test_helper"
 
 class ConduitStreamStatsTest < Minitest::Test
+  def test_stats_disabled_by_default_returns_nil
+    stream = ConduitSSE.new(parser: ->(d) { d })
+
+    assert_nil stream.stats
+
+    stream << "data: hello\n\n"
+
+    # Still nil after processing; no bookkeeping happens.
+    assert_nil stream.stats
+  end
+
+  def test_stats_disabled_does_not_count_errors
+    stream = ConduitSSE.new(parser: ->(d) { d })
+    errors = []
+    stream.on_error { |e| errors << e }
+    stream.on_parsed { raise "boom" }
+
+    stream << "data: test\n\n"
+
+    assert_nil stream.stats
+    assert_equal 1, errors.length
+  end
+
+  def test_buffer_size_works_without_stats
+    stream = ConduitSSE.new(parser: ->(d) { d })
+
+    assert_equal 0, stream.buffer_size
+
+    stream << "data: hello"
+    assert stream.buffer_size.positive?
+
+    stream << "\n\n"
+    assert_equal 0, stream.buffer_size
+  end
+
   def test_buffer_size_returns_current_buffer_size
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     assert_equal 0, stream.buffer_size
 
@@ -16,7 +51,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_stats_returns_counts
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     assert_equal({ avg_fields_per_frame: 0 }, stream.stats)
 
@@ -34,7 +69,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_stats_increments_on_multiple_events
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     stream << "data: first\n\n"
     stream << "data: second\n\n"
@@ -48,7 +83,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_stats_tracks_pings
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     stream << ": ping\n\n"
 
@@ -59,7 +94,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_stats_tracks_errors
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     errors = []
     stream.on_error { |e| errors << e }
@@ -73,7 +108,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_stats_returns_copy_not_internal_hash
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     stats1 = stream.stats
     stream << "data: test\n\n"
@@ -85,7 +120,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_stats_tracks_multiple_fields
-    stream = Conduit.new(parser: ->(d) { d })
+    stream = ConduitSSE.new(parser: ->(d) { d }, stats: true)
 
     stream << "data: hello\nevent: message\nid: 123\n\n"
 
@@ -95,7 +130,7 @@ class ConduitStreamStatsTest < Minitest::Test
   end
 
   def test_custom_frame_separator
-    stream = Conduit.new(parser: ->(d) { d }, frame_separator: "---")
+    stream = ConduitSSE.new(parser: ->(d) { d }, frame_separator: "---", stats: true)
 
     stream << "data: hello---"
 

@@ -4,7 +4,7 @@ require "test_helper"
 
 class ConduitStreamFinishTest < Minitest::Test
   def make_stream
-    Conduit.new(parser: ->(d) { d })
+    ConduitSSE.new(parser: ->(d) { d })
   end
 
   def test_finish_flushes_a_trailing_unterminated_frame

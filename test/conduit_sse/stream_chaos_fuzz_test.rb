@@ -12,7 +12,7 @@ class ConduitStreamChaosFuzzTest < Minitest::Test
 
       events = []
 
-      stream = Conduit.new(parser: ->(p) { { data: p } })
+      stream = ConduitSSE.new(parser: ->(p) { { data: p } })
 
       stream.each { |e| events << e }
       chunks.each { |c| stream << c }

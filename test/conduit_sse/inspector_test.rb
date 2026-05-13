@@ -2,13 +2,13 @@
 
 require "test_helper"
 require "stringio"
-require "conduit/inspector"
+require "conduit_sse/inspector"
 
 class ConduitInspectorTest < Minitest::Test
   def setup
     @io = StringIO.new
-    @stream = Conduit.new(parser: ->(d) { d.upcase })
-    @inspector = Conduit::Inspector.attach(@stream, io: @io)
+    @stream = ConduitSSE.new(parser: ->(d) { d.upcase })
+    @inspector = ConduitSSE::Inspector.attach(@stream, io: @io)
   end
 
   def test_does_not_clobber_user_callbacks

@@ -6,7 +6,7 @@ class ConduitStreamPingTest < Minitest::Test
   def test_detects_ping_frame
     pings = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } })
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } })
 
     stream.on_ping { |p| pings << p }
     stream << ": ping\n\n"
@@ -17,7 +17,7 @@ class ConduitStreamPingTest < Minitest::Test
   def test_ping_does_not_emit_event
     events = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } })
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } })
 
     stream.each { |e| events << e }
     stream << ": ping\n\n"

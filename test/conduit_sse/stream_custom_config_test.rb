@@ -6,7 +6,7 @@ class ConduitStreamCustomConfigTest < Minitest::Test
   def test_custom_chunk_normalizer
     events = []
 
-    stream = Conduit.new(
+    stream = ConduitSSE.new(
       parser: ->(p) { { data: p } },
       chunk_normalizer: lambda do |chunk|
         chunk.gsub("PREFIX:", "")
@@ -22,7 +22,7 @@ class ConduitStreamCustomConfigTest < Minitest::Test
   def test_custom_payload_start
     events = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } }, payload_start: "message:")
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } }, payload_start: "message:")
 
     stream.each { |e| events << e }
     stream << "message: hello\n\n"
@@ -33,7 +33,7 @@ class ConduitStreamCustomConfigTest < Minitest::Test
   def test_custom_frame_separator
     events = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } }, frame_separator: "---")
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } }, frame_separator: "---")
 
     stream.each { |e| events << e }
     stream << "data: hello---data: world---"
@@ -47,7 +47,7 @@ class ConduitStreamCustomConfigTest < Minitest::Test
   def test_custom_ping_pattern
     pings = []
 
-    stream = Conduit.new(parser: ->(p) { { data: p } }, ping_pattern: "#")
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } }, ping_pattern: "#")
 
     stream.on_ping { |p| pings << p }
     stream << "# ping\n\n"
@@ -64,7 +64,7 @@ class ConduitStreamCustomConfigTest < Minitest::Test
       frame.strip
     }
 
-    stream = Conduit.new(parser: ->(p) { { data: p } }, sanitize_pattern: custom_sanitize)
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } }, sanitize_pattern: custom_sanitize)
 
     stream << "data: hello\n\n"
 
@@ -73,7 +73,7 @@ class ConduitStreamCustomConfigTest < Minitest::Test
   end
 
   def test_custom_payload_start_with_colon
-    stream = Conduit.new(parser: ->(p) { { data: p } }, payload_start: "event:")
+    stream = ConduitSSE.new(parser: ->(p) { { data: p } }, payload_start: "event:")
 
     events = []
     stream.each { |e| events << e }

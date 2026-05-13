@@ -1,48 +1,39 @@
 # frozen_string_literal: true
 
 require_relative "callbacks"
+require_relative "config"
 require_relative "defaults"
 require_relative "event"
+require_relative "state"
 
-module Conduit
+module ConduitSSE
   # Core streaming parser for Server-Sent Events (SSE).
+  #
+  # See {ConduitSSE::Config} for the full list of configuration knobs and
+  # the two equivalent constructor forms (kwargs and block).
   class Stream
-    # Initialize a new Stream with optional customizations.
-    #
-    # @param parser [Proc] Required. Callable that receives the joined data string of an SSE event and returns whatever shape the application wants.
-    # @param chunk_normalizer [Proc] Optional. Transforms incoming chunks before processing.
-    # @param frame_separator [String] Optional. Delimiter that separates frames in the stream.
-    # @param payload_start [String] Optional. Prefix used to identify the data field (the trailing ":" is stripped to derive the field name).
-    # @param ping_pattern [String] Optional. Pattern identifying ping frames.
-    # @param sanitize_pattern [Proc] Optional. Cleans or validates frame content.
-    def initialize(
-      parser:,
-      chunk_normalizer: nil,
-      frame_separator: nil,
-      payload_start: nil,
-      ping_pattern: nil,
-      sanitize_pattern: nil
-    )
-      raise ArgumentError, "parser must be a Proc (respond to #call)" unless parser.respond_to?(:call)
+    # The frozen, validated configuration for this stream.
+    # @return [ConduitSSE::Config]
+    attr_reader :config
 
-      @parser           = parser
-      @chunk_normalizer = chunk_normalizer || Defaults::CHUNK_NORMALIZER
-      @sanitize_pattern = sanitize_pattern || Defaults::SANITIZE_PATTERN
-      @frame_separator  = frame_separator  || Defaults::FRAME_SEPARATOR
-      @payload_start    = payload_start    || Defaults::PAYLOAD_START
-      @ping_pattern     = ping_pattern     || Defaults::PING_PATTERN
-      @data_field       = @payload_start.chomp(":")
-      @buffer           = +""
-      @callbacks        = Callbacks.new
-      @last_event_id    = nil
-      @retry_ms         = nil
-      @last_event_type  = nil
-      @stats            = Hash.new(0)
-      @total_fields     = 0
+    # The runtime mutable state (buffer, last_event_id, retry_ms, counters).
+    # @return [ConduitSSE::State]
+    attr_reader :state
+
+    # @yieldparam config [ConduitSSE::Config] Mutable configuration object;
+    #   any values set in the block win over the kwargs.
+    def initialize(**opts, &block)
+      @config = Config.new(**opts)
+      block&.call(@config)
+      @config.finalize!
+      @state = State.new(stats_enabled: @config.stats)
     end
 
-    # Stream state — last id/retry seen, per SSE spec semantics.
-    attr_reader :last_event_id, :retry_ms
+    # @return [String, nil] The last `id:` value seen on the wire.
+    def last_event_id = @state.last_event_id
+
+    # @return [Integer, String, nil] The last `retry:` value seen on the wire.
+    def retry_ms = @state.retry_ms
 
     # Current buffer size in bytes.
     #
@@ -51,7 +42,7 @@ module Conduit
     #
     # @return [Integer] Buffer size in bytes
     def buffer_size
-      @buffer.bytesize
+      @state.buffer_size
     end
 
     # Stream statistics.
@@ -59,12 +50,15 @@ module Conduit
     # Returns a hash with counts of all processed items, useful for monitoring
     # and debugging without the overhead of the Inspector's logging.
     #
-    # @return [Hash] Statistics hash with keys: :chunk, :frame, :event, :parsed, :ping, :field, :error, :avg_fields_per_frame
+    # Stats are **opt-in**: pass `stats: true` to {#initialize} to enable
+    # tracking. When stats are disabled (the default), this method returns nil
+    # and the parser does zero stats bookkeeping per event.
+    #
+    # @return [Hash, nil] Statistics hash with keys: :chunk, :frame, :event,
+    #   :parsed, :ping, :field, :error, :avg_fields_per_frame; or nil when
+    #   stats tracking is disabled.
     def stats
-      stats = @stats.dup
-      avg_fields = @stats[:frame].positive? ? (@total_fields.to_f / @stats[:frame]).round(2) : 0
-      stats[:avg_fields_per_frame] = avg_fields
-      stats
+      @state.stats_snapshot
     end
 
     # Raw chunk as it arrived (after normalization).
@@ -75,7 +69,7 @@ module Conduit
     #
     # @yield [chunk] The normalized chunk string
     def on_chunk(&block)
-      @callbacks.on(:chunk, &block)
+      @state.callbacks.on(:chunk, &block)
     end
 
     # Complete frame text (after sanitization), regardless of whether it produces an event.
@@ -87,12 +81,12 @@ module Conduit
     #
     # @yield [frame] The sanitized frame string
     def on_frame(&block)
-      @callbacks.on(:frame, &block)
+      @state.callbacks.on(:frame, &block)
     end
 
-    # Fully parsed SSE event as a {Conduit::Event}.
+    # Fully parsed SSE event as a {ConduitSSE::Event}.
     #
-    # This callback receives a Conduit::Event object with the following attributes:
+    # This callback receives a ConduitSSE::Event object with the following attributes:
     # - event: Event type (defaults to "message")
     # - data: Joined data field content (data lines joined by "\n")
     # - id: Last event ID from the SSE spec
@@ -103,7 +97,7 @@ module Conduit
     #
     # @param type [String, Array<String>, nil] Optional event type(s) to filter by.
     #   If provided, the callback only triggers for matching event types.
-    # @yield [event] A Conduit::Event object
+    # @yield [event] A ConduitSSE::Event object
     def on_event(type: nil, &block)
       if type
         wrapped_block = proc do |event|
@@ -112,9 +106,9 @@ module Conduit
 
           block.call(event)
         end
-        @callbacks.on(:event, &wrapped_block)
+        @state.callbacks.on(:event, &wrapped_block)
       else
-        @callbacks.on(:event, &block)
+        @state.callbacks.on(:event, &block)
       end
     end
 
@@ -134,14 +128,14 @@ module Conduit
         wrapped_block = proc do |parsed|
           # We need access to the event type here, but on_parsed receives parsed data
           # We need to track the last event type to filter properly
-          filter_match = Array(type).include?(@last_event_type || "message")
+          filter_match = Array(type).include?(@state.last_event_type || "message")
           next unless filter_match
 
           block.call(parsed)
         end
-        @callbacks.on(:parsed, &wrapped_block)
+        @state.callbacks.on(:parsed, &wrapped_block)
       else
-        @callbacks.on(:parsed, &block)
+        @state.callbacks.on(:parsed, &block)
       end
     end
 
@@ -153,7 +147,7 @@ module Conduit
     #
     # @yield [frame] The ping frame string
     def on_ping(&block)
-      @callbacks.on(:ping, &block)
+      @state.callbacks.on(:ping, &block)
     end
 
     # Every parsed SSE field line. Yields (name, value) for every field, including
@@ -164,7 +158,7 @@ module Conduit
     #
     # @yield [name, value] The field name and value as strings
     def on_field(&block)
-      @callbacks.on(:field, &block)
+      @state.callbacks.on(:field, &block)
     end
 
     # Errors raised by any callback or by the parser.
@@ -179,10 +173,10 @@ module Conduit
     # @yield [error] The exception that was raised
     def on_error(&block)
       wrapped_block = proc do |error|
-        @stats[:error] += 1
+        @state.increment_stat(:error)
         block.call(error)
       end
-      @callbacks.on(:error, &wrapped_block)
+      @state.callbacks.on(:error, &wrapped_block)
     end
 
     # Feed a chunk of data to the stream for processing.
@@ -196,9 +190,9 @@ module Conduit
     def <<(chunk)
       chunk = normalize_chunk(chunk)
 
-      @callbacks.emit(:chunk, chunk)
-      @buffer << chunk
-      @stats[:chunk] += 1
+      @state.callbacks.emit(:chunk, chunk)
+      @state.buffer << chunk
+      @state.increment_stat(:chunk)
 
       process_frames
       self
@@ -213,9 +207,10 @@ module Conduit
     #
     # @return [self]
     def finish
-      return self if @buffer.empty?
+      buffer = @state.buffer
+      return self if buffer.empty?
 
-      remainder = @buffer.slice!(0, @buffer.length)
+      remainder = buffer.slice!(0, buffer.length)
       process_frame(remainder)
       self
     end
@@ -244,11 +239,14 @@ module Conduit
     # Incomplete frames remain in the buffer for the next chunk.
     # This is called automatically after each chunk is fed via <<.
     def process_frames
+      buffer    = @state.buffer
+      separator = @config.frame_separator
+
       loop do
-        idx = @buffer.index(@frame_separator)
+        idx = buffer.index(separator)
         break unless idx
 
-        frame = @buffer.slice!(0, idx + @frame_separator.length)
+        frame = buffer.slice!(0, idx + separator.length)
         process_frame(frame)
       end
     end
@@ -271,54 +269,56 @@ module Conduit
       frame = sanitize(frame)
       return if frame.empty?
 
-      @stats[:frame] += 1
+      callbacks = @state.callbacks
+      @state.increment_stat(:frame)
 
       if ping?(frame)
-        @callbacks.emit(:ping, frame)
-        @stats[:ping] += 1
+        callbacks.emit(:ping, frame)
+        @state.increment_stat(:ping)
         return
       end
 
-      @callbacks.emit(:frame, frame)
+      callbacks.emit(:frame, frame)
 
       type = nil
       data_lines = []
       frame_fields = 0
+      data_field = @config.data_field
 
       parse_fields(frame).each do |name, value|
-        @callbacks.emit(:field, name, value)
-        @stats[:field] += 1
+        callbacks.emit(:field, name, value)
+        @state.increment_stat(:field)
         frame_fields += 1
 
         case name
-        when @data_field then data_lines << value
+        when data_field  then data_lines << value
         when "event"     then type = value
-        when "id"        then @last_event_id = value unless value.include?("\u0000")
-        when "retry"     then @retry_ms = lenient_int(value)
+        when "id"        then @state.last_event_id = value unless value.include?("\u0000")
+        when "retry"     then @state.retry_ms = lenient_int(value)
         end
       end
 
-      @total_fields += frame_fields
+      @state.add_fields(frame_fields)
       return if data_lines.empty?
 
       data = data_lines.join("\n")
-      @last_event_type = type || "message"
+      @state.last_event_type = type || "message"
 
       event = Event.new(
-        event: @last_event_type,
+        event: @state.last_event_type,
         data: data,
-        id: @last_event_id,
-        retry: @retry_ms
+        id: @state.last_event_id,
+        retry: @state.retry_ms
       )
 
-      @callbacks.emit(:event, event)
-      @stats[:event] += 1
+      callbacks.emit(:event, event)
+      @state.increment_stat(:event)
 
-      parsed = @callbacks.call_safely(@parser, data)
+      parsed = callbacks.call_safely(@config.parser, data)
       return if parsed.equal?(Callbacks::FAILED)
 
-      @callbacks.emit(:parsed, parsed)
-      @stats[:parsed] += 1
+      callbacks.emit(:parsed, parsed)
+      @state.increment_stat(:parsed)
     end
 
     # Per https://html.spec.whatwg.org/multipage/server-sent-events.html, parse one field per line:
@@ -352,15 +352,15 @@ module Conduit
     end
 
     def normalize_chunk(chunk)
-      @chunk_normalizer.call(chunk)
+      @config.chunk_normalizer.call(chunk)
     end
 
     def sanitize(frame)
-      @sanitize_pattern.call(frame)
+      @config.sanitize_pattern.call(frame)
     end
 
     def ping?(frame)
-      frame.start_with?(@ping_pattern)
+      frame.start_with?(@config.ping_pattern)
     end
   end
 end

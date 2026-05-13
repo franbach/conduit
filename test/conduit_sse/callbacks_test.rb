@@ -4,7 +4,7 @@ require "test_helper"
 
 class ConduitCallbacksTest < Minitest::Test
   def setup
-    @callbacks = Conduit::Callbacks.new
+    @callbacks = ConduitSSE::Callbacks.new
   end
 
   # Composition
@@ -114,7 +114,7 @@ class ConduitCallbacksTest < Minitest::Test
 
     result = @callbacks.call_safely(->(_) { raise "boom" }, :x)
 
-    assert_same Conduit::Callbacks::FAILED, result
+    assert_same ConduitSSE::Callbacks::FAILED, result
   end
 
   def test_failed_sentinel_is_stable_across_calls
@@ -124,6 +124,6 @@ class ConduitCallbacksTest < Minitest::Test
     b = @callbacks.call_safely(->(_) { raise "b" }, :x)
 
     assert_same a, b
-    assert_same Conduit::Callbacks::FAILED, a
+    assert_same ConduitSSE::Callbacks::FAILED, a
   end
 end

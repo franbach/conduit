@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-module Conduit
-  # Attach to a Conduit::Stream to log every layer of activity to an IO.
+module ConduitSSE
+  # Attach to a ConduitSSE::Stream to log every layer of activity to an IO.
   # Intended for development/debugging only.
   #
-  #   stream = Conduit.new(parser: ->(d) { JSON.parse(d) })
-  #   Conduit::Inspector.attach(stream)
+  #   stream = ConduitSSE.new(parser: ->(d) { JSON.parse(d) })
+  #   ConduitSSE::Inspector.attach(stream)
   #
   # Pass io: to redirect (e.g. a StringIO in tests, a file, $stderr).
   class Inspector
