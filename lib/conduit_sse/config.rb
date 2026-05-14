@@ -15,10 +15,10 @@ module ConduitSSE
   #   ConduitSSE.new(parser: ->(d) { JSON.parse(d) }, stats: true)
   #
   #   # Block form
-  #   ConduitSSE.new do |c|
-  #     c.parser           = ->(d) { JSON.parse(d) }
-  #     c.stats            = true
-  #     c.frame_separator  = "\r\n\r\n"
+  #   ConduitSSE.new do |config|
+  #     config.parser           = ->(d) { JSON.parse(d) }
+  #     config.stats            = true
+  #     config.frame_separator  = "\r\n\r\n"
   #   end
   #
   # The two can be mixed; kwargs seed the config and the block then mutates

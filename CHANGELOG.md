@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-05-13
+
+### Changed
+
+- README polish: added a hero illustration, rewrote the OpenAI streaming
+  example (the previous version double-registered `on_parsed` and
+  `on_field` and undersold the gem's built-in event-type filtering),
+  added a Config/State architecture section, replaced the ASCII pipeline
+  diagram with a Mermaid `flowchart TD`, and renamed the block parameter
+  convention from `|c|` to `|config|` in all examples for readability.
+- `ConduitSSE::Config` class docstring updated to match the new
+  `|config|` convention.
+- Gemspec now excludes `docs/` from the packaged gem so the hero image
+  doesn't bloat installs.
+- Switched the README gem-version badge from `badge.fury.io` (cache-laggy,
+  semi-abandoned) to `img.shields.io`, which queries RubyGems directly and
+  refreshes within minutes of a release.
+
+No code changes. Drop-in replacement for 2.0.0.
+
 ## [2.0.0] - 2026-05-12
 
 ### Breaking
@@ -28,19 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a mutable `ConduitSSE::Config` instance:
 
   ```ruby
-  ConduitSSE.new do |c|
-    c.parser = ->(d) { JSON.parse(d) }
-    c.stats  = true
+  ConduitSSE.new do |config|
+    config.parser = ->(d) { JSON.parse(d) }
+    config.stats  = true
   end
   ```
 
   Both forms can be mixed; kwargs seed the config and the block overrides.
 
-- **`ConduitSSE::Config`** — new public class. Holds the seven parsing knobs,
+- **`ConduitSSE::Config`**: new public class. Holds the seven parsing knobs,
   loads its own defaults, validates unknown keys, and exposes a `finalize!`
   method that runs validation, computes the derived `data_field`, and
   freezes the instance. Accessible at runtime as `stream.config`.
-- **`ConduitSSE::State`** — new public class. Holds the per-stream mutable
+- **`ConduitSSE::State`**: new public class. Holds the per-stream mutable
   runtime: input buffer, callbacks registry, last event id / retry / type,
   and (when enabled) the stats counter hash. Exposes a null-object
   `#increment_stat` / `#add_fields` so the stream has no `if @stats`
